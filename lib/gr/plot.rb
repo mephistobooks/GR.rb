@@ -31,7 +31,7 @@ module GR
     PLOT_KIND = %i[line step scatter stem hist contour contourf hexbin heatmap
                    nonuniformheatmap wireframe surface plot3 scatter3 imshow
                    isosurface polar polarhist polarheatmap trisurf tricont shade
-                   volume].freeze # the name might be changed in the future.
+                   volume quiver].freeze # the name might be changed in the future.
 
     # Keyword options conform to GR.jl.
     KW_ARGS = %i[accelerate algorithm alpha backgroundcolor barwidth baseline
@@ -112,7 +112,7 @@ module GR
       viewport[2] = vp3 + 0.125 * (vp4 - vp3)
       viewport[3] = vp3 + 0.925 * (vp4 - vp3)
       if %i[contour contourf hexbin heatmap nonuniformheatmap polarheatmap
-            surface trisurf volume].include?(kind)
+            surface trisurf volume quiver].include?(kind)
         viewport[1] -= 0.1
       end
 
@@ -846,7 +846,14 @@ module GR
             GR.setfillintstyle(GR::INTSTYLE_HOLLOW)
             GR.fillrect(x[i], x[i + 1], y[i], y[i + 1])
           end
-        end
+
+        when :quiver
+          u = z
+          v = c
+          GR._quiver_(x, y, u, v, true)
+          colorbar(0.05)
+
+      end
 
         GR.restorestate
       end
@@ -1033,6 +1040,8 @@ module GR
     def minmax
       xmin = ymin = zmin = cmin = Float::INFINITY
       xmax = ymax = zmax = cmax = -Float::INFINITY
+      x_step = nil
+      y_step = nil
 
       args.each do |x, y, z, c|
         if x
@@ -1065,7 +1074,51 @@ module GR
           cmin = [z0, zmin].min
           cmax = [z1, zmax].max
         end
+        next unless kvs[:kind] == :quiver
+
+        _x_step = if narray?(x)
+                    (x[1..-1] - x[0..-2]).abs.max
+                  else
+                    x.each_cons(2).map { |a, b| (a - b).abs }.max
+                   end
+        x_step = if x_step
+                   [x_step, _x_step].max
+                 else
+                   _x_step
+                 end
+
+        _y_step = if narray?(y)
+                    (y[1..-1] - y[0..-2]).abs.max
+                  else
+                    y.each_cons(2).map { |a, b| (a - b).abs }.max
+                  end
+        y_step = if y_step
+                   [y_step, _y_step].max
+                 else
+                   _y_step
+                 end
       end
+
+      if kvs[:kind] == :quiver
+        if x_step > 0
+          xmin -= x_step
+          xmax += x_step
+        end
+        if y_step > 0
+          ymin -= y_step
+          ymax += y_step
+        end
+        # Use vector length for colormap
+        x, y, u, v, spec = args[0]
+        lengths_squared = if narray?(u) && narray?(v)
+                            u**2 + v**2
+                          else
+                            u.to_a.zip(v.to_a).map { |ui, vi| ui**2 + vi**2 }
+                          end
+        zmin = Math.sqrt(lengths_squared.min)
+        zmax = Math.sqrt(lengths_squared.max)
+      end
+
       xmin, xmax = fix_minmax(xmin, xmax)
       ymin, ymax = fix_minmax(ymin, ymax)
       zmin, zmax = fix_minmax(zmin, zmax)
@@ -1262,6 +1315,13 @@ module GR
     def volume(v, kv = {})
       create_plot(:volume, v, kv) do |plt|
         plt.args = [[nil, nil, v, nil, '']]
+      end
+    end
+
+    alias _quiver_ quiver
+    def quiver(x, y, u, v, kv = {})
+      create_plot(:quiver, x, y, u, v, kv) do |plt|
+        plt.args = [[x, y, u, v]]
       end
     end
 
