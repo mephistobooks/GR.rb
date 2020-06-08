@@ -4,10 +4,13 @@ require 'gr'
 autoload :GR3, 'gr3'
 
 # FIXME: Plot should not depend on Numo::Narrray unless the GR3 module is required.
+# Note: The Plot class has a linspace function that is independent of Numo..
 require 'numo/narray'
 
 module GR
-  class Plot # should be Figure ?
+  # This class offers a simple, matlab-style API built on top of the GR package.
+  # The class name Plot may be changed in the future.
+  class Plot
     # Why is the Plot class NOT object-oriented?
     #
     # Because the code here is mainly ported from GR.jl.
@@ -35,14 +38,14 @@ module GR
 
     # Keyword options conform to GR.jl.
     KW_ARGS = %i[accelerate algorithm alpha backgroundcolor barwidth baseline
-                 clabels color colormap figsize isovalue labels levels location
-                 nbins rotation size tilt title where xflip xform xlabel xlim
-                 xlog yflip ylabel ylim ylog zflip zlabel zlim zlog clim
-                 subplot].freeze
+                 clabels color colormap figsize horizontal isovalue label labels
+                 levels location nbins rotation size tilt title where xflip
+                 xform xlabel xlim xlog yflip ylabel ylim ylog zflip zlabel zlim
+                 zlog clim subplot].freeze
 
-    @@last_plot = nil
-    def self.last_plot
-      @@last_plot
+    @last_plot = nil
+    class << self
+      attr_accessor :last_plot
     end
 
     def initialize(*args)
@@ -51,20 +54,24 @@ module GR
              else
                {}
              end
+      # Check keyword options.
+      @kvs.each_key do |k|
+        warn "Unknown keyword: #{k}" unless KW_ARGS.include? k
+      end
 
-      # label is a original keyword arg which GR.jl does not have.
+      # label(singular form) is a original keyword arg which GR.jl does not have.
       @kvs[:labels] = [@kvs[:label]] if @kvs[:label] && @kvs[:labels].nil?
 
       @args = plot_args(args) # method name is the same as Julia/Python
       @kvs[:size] ||= [600, 450]
-      @kvs[:ax] ||= false
+      @kvs[:ax] = false if @kvs[:ax].nil?
       @kvs[:subplot] ||= [0, 1, 0, 1]
-      @kvs[:clear] ||= true
-      @kvs[:update] ||= true
+      @kvs[:clear] = true if @kvs[:clear].nil?
+      @kvs[:update] = true if @kvs[:update].nil?
       @scheme = 0
       @background = 0xffffff
       @handle = nil
-      @@last_plot = self
+      self.class.last_plot = self
     end
     attr_accessor :args, :kvs, :scheme
 
@@ -165,7 +172,8 @@ module GR
         scale |= GR::OPTION_FLIP_Y if kvs[:yflip]
         scale |= GR::OPTION_FLIP_Z if kvs[:zflip]
       end
-      if kvs.key?(:panzoom)
+      kvs[:scale] = scale
+      if kvs.has_key?(:panzoom)
         xmin, xmax, ymin, ymax = GR.panzoom(*kvs[:panzoom])
         kvs[:xrange] = [xmin, xmax]
         kvs[:yrange] = [ymin, ymax]
@@ -182,8 +190,8 @@ module GR
 
       xmin, xmax = kvs[:xrange]
       if (scale & GR::OPTION_X_LOG) == 0
-        xmin, xmax = GR.adjustlimits(xmin, xmax) unless kvs.key?(:xlim) || kvs.key?(:panzoom)
-        if kvs.key?(:xticks)
+        xmin, xmax = GR.adjustlimits(xmin, xmax) unless kvs.has_key?(:xlim) || kvs.has_key?(:panzoom)
+        if kvs.has_key?(:xticks)
           xtick, majorx = kvs[:xticks]
         else
           majorx = major_count
@@ -200,12 +208,12 @@ module GR
       kvs[:xaxis] = xtick, xorg, majorx
 
       ymin, ymax = kvs[:yrange]
-      if kind == :hist && !kvs.key?(:ylim)
+      if kind == :hist && !kvs.has_key?(:ylim)
         ymin = (scale & GR::OPTION_Y_LOG) == 0 ? 0 : 1
       end
       if (scale & GR::OPTION_Y_LOG) == 0
-        ymin, ymax = GR.adjustlimits(ymin, ymax) unless kvs.key?(:ylim) || kvs.key?(:panzoom)
-        if kvs.key?(:yticks)
+        ymin, ymax = GR.adjustlimits(ymin, ymax) unless kvs.has_key?(:ylim) || kvs.has_key?(:panzoom)
+        if kvs.has_key?(:yticks)
           ytick, majory = kvs[:yticks]
         else
           majory = major_count
@@ -224,8 +232,8 @@ module GR
       if %i[wireframe surface plot3 scatter3 trisurf volume].include?(kind)
         zmin, zmax = kvs[:zrange]
         if (scale & GR::OPTION_Z_LOG) == 0
-          zmin, zmax = GR.adjustlimits(zmin, zmax) if kvs.key?(:zlim)
-          if kvs.key?(:zticks)
+          zmin, zmax = GR.adjustlimits(zmin, zmax) if kvs.has_key?(:zlim)
+          if kvs.has_key?(:zticks)
             ztick, majorz = kvs[:zticks]
           else
             majorz = major_count
@@ -288,8 +296,8 @@ module GR
         else
           drawgrid && GR.grid(xtick, ytick, 0, 0, majorx, majory)
         end
-        if kvs.key?(:xticklabels) || kvs.key?(:yticklabels)
-          fx = if kvs.key?(:xticklabels)
+        if kvs.has_key?(:xticklabels) || kvs.has_key?(:yticklabels)
+          fx = if kvs.has_key?(:xticklabels)
                  GRCommons::Fiddley::Function.new(
                    :void, %i[double double string double]
                  ) do |x, y, _svalue, value|
@@ -303,7 +311,7 @@ module GR
                    GR.textext(x, y, value.to_s)
                  end
                end
-          fy = if kvs.key?(:yticklabels)
+          fy = if kvs.has_key?(:yticklabels)
                  GRCommons::Fiddley::Function.new(
                    :void, %i[double double string double]
                  ) do |x, y, _svalue, value|
@@ -324,7 +332,7 @@ module GR
         GR.axes(xtick, ytick, xorg[1], yorg[1], -majorx, -majory, -ticksize)
       end
 
-      if kvs.key?(:title)
+      if kvs[:title]
         GR.savestate
         GR.settextalign(GR::TEXT_HALIGN_CENTER, GR::TEXT_VALIGN_TOP)
         text(0.5 * (viewport[0] + viewport[1]), vp[3], kvs[:title])
@@ -336,13 +344,13 @@ module GR
         zlabel = kvs[:zlabel] || ''
         GR.titles3d(xlabel, ylabel, zlabel)
       else
-        if kvs.key?(:xlabel)
+        if kvs.has_key?(:xlabel)
           GR.savestate
           GR.settextalign(GR::TEXT_HALIGN_CENTER, GR::TEXT_VALIGN_BOTTOM)
           text(0.5 * (viewport[0] + viewport[1]), vp[2] + 0.5 * charheight, kvs[:xlabel])
           GR.restorestate
         end
-        if kvs.key?(:ylabel)
+        if kvs.has_key?(:ylabel)
           GR.savestate
           GR.settextalign(GR::TEXT_HALIGN_CENTER, GR::TEXT_VALIGN_TOP)
           GR.setcharup(-1, 0)
@@ -380,23 +388,21 @@ module GR
           GR.drawarc(-r, r, -r, r, 0, 359)
         end
       end
-      linspace(0, 315, 8).each do |alpha|
+      0.step(by: 45, to: 315) do |alpha|
         sinf = Math.sin(alpha * Math::PI / 180)
         cosf = Math.cos(alpha * Math::PI / 180)
         GR.polyline([cosf, 0], [sinf, 0])
         GR.settextalign(GR::TEXT_HALIGN_CENTER, GR::TEXT_VALIGN_HALF)
         x, y = GR.wctondc(1.1 * cosf, 1.1 * sinf)
-        GR.textext(x, y, "%<alpha>g\xb0")
+        GR.textext(x, y, "#{alpha}^o")
       end
       GR.restorestate
     end
 
     def plot_polar(θ, ρ)
-      ρ = Numo::DFloat.cast(ρ) if ρ.is_a? Array
       window = kvs[:window]
-      rmin = window[2]
-      rmax = window[3]
-      ρ = (ρ - rmin) / (rmax - rmin)
+      rmax = window[3].to_f
+      ρ = ρ.map { |i| i / rmax }
       n = ρ.length
       x = []
       y = []
@@ -409,13 +415,13 @@ module GR
 
     def plot_img(img)
       viewport = kvs[:vp].clone
-      viewport[3] -= 0.05 if kvs.key?(:title)
+      viewport[3] -= 0.05 if kvs.has_key?(:title)
       vp = kvs[:vp]
 
       if img.is_a? String
         width, height, data = GR.readimage(img)
       else
-        width, height = img.shape
+        height, width = img.shape
         cmin, cmax = kvs[:crange]
         data = img.map { |i| normalize_color(i, cmin, cmax) }
         data = data.map { |i| (1000 + i * 255).round }
@@ -437,12 +443,12 @@ module GR
 
       GR.selntran(0)
       GR.setscale(0)
-      if kvs.key?(:xflip)
+      if kvs.has_key?(:xflip)
         tmp = xmax
         xmax = xmin
         xmin = tmp
       end
-      if kvs.key?(:yflip)
+      if kvs.has_key?(:yflip)
         tmp = ymax
         ymax = ymin
         ymin = tmp
@@ -453,7 +459,7 @@ module GR
         GR.cellarray(xmin, xmax, ymin, ymax, width, height, data)
       end
 
-      if kvs.key?(:title)
+      if kvs.has_key?(:title)
         GR.savestate
         GR.settextalign(GR::TEXT_HALIGN_CENTER, GR::TEXT_VALIGN_TOP)
         text(0.5 * (viewport[0] + viewport[1]), vp[3], kvs[:title])
@@ -482,7 +488,9 @@ module GR
       end
 
       GR.selntran(0)
-      values = ((v - v.min) / (v.max - v.min) * (2 ^ 16 - 1)).round
+      v = Numo::DFloat.cast(v) if v.is_a? Array
+      values = ((v - v.min) / (v.max - v.min) * (2**16 - 1)).round
+      values = Numo::UInt16.cast(values)
       nx, ny, nz = v.shape
       isovalue = ((kvs[:isovalue] || 0.5) - v.min) / (v.max - v.min)
       rotation = ((kvs[:rotation] || 40) * Math::PI / 180.0)
@@ -491,7 +499,7 @@ module GR
       GR3.clear
       mesh = GR3.createisosurfacemesh(values, [2.0 / (nx - 1), 2.0 / (ny - 1), 2.0 / (nz - 1)],
                                       [-1, -1, -1],
-                                      (isovalue * (2 ^ 16 - 1)).round)
+                                      (isovalue * (2**16 - 1)).round)
       color = kvs[:color] || [0.0, 0.5, 0.8]
       GR3.setbackgroundcolor(1, 1, 1, 0)
       GR3.drawmesh(mesh, 1, [0, 0, 0], [0, 0, 1], [0, 1, 0], color, [1, 1, 1])
@@ -508,9 +516,9 @@ module GR
       viewport = kvs[:viewport]
       zmin, zmax = kvs[:zrange]
       mask = (GR::OPTION_Z_LOG | GR::OPTION_FLIP_Y | GR::OPTION_FLIP_Z)
-      options = if kvs.key?(:zflip)
+      options = if kvs.has_key?(:zflip)
                   (GR.inqscale | GR::OPTION_FLIP_Y)
-                elsif kvs.key?(:yflip)
+                elsif kvs.has_key?(:yflip)
                   GR.inqscale & ~GR::OPTION_FLIP_Y
                 else
                   GR.inqscale
@@ -556,6 +564,8 @@ module GR
         # Not yet.
       end
 
+      GR.settextfontprec(232, 3)
+
       set_viewport(kind, kvs[:subplot])
       unless kvs[:ax]
         set_window(kind)
@@ -566,7 +576,7 @@ module GR
         end
       end
 
-      if kvs.key?(:colormap)
+      if kvs.has_key?(:colormap)
         GR.setcolormap(kvs[:colormap])
       else
         GR.setcolormap(GR::COLORMAP_VIRIDIS)
@@ -574,10 +584,9 @@ module GR
 
       GR.uselinespec(' ')
       args.each do |x, y, z, c, spec|
-        # FIXME
-        spec ||= ''
+        spec ||= kvs[:spec] ||= ''
         GR.savestate
-        GR.settransparency(kvs[:alpha]) if kvs.key?(:alpha)
+        GR.settransparency(kvs[:alpha]) if kvs.has_key?(:alpha)
 
         case kind
 
@@ -659,21 +668,18 @@ module GR
             GR.fillrect(x[i], x[i + 1], ymin, y[i])
           end
 
-        # when :polarhist
-        #   xmin, xmax = x.minmax
-        #   ymax = kvs[:window][3]
-        #   ρ = y.map { |i| 2 * (i.to_f / ymax - 0.5) }
-        #   θ = x.map { |i| 2 * Math::PI * (i.to_f - xmin) / (xmax - xmin) }
-        #   ρ.length.times do |i|
-        #     GR.setfillcolorind(989)
-        #     GR.setfillintstyle(GR::INTSTYLE_SOLID)
-        #     GR.fillarea([0, ρ[i] * Math.cos(θ[i]), ρ[i] * Math.cos(θ[i + 1])],
-        #                 [0, ρ[i] * Math.sin(θ[i]), ρ[i] * Math.sin(θ[i + 1])])
-        #     GR.setfillcolorind(1)
-        #     GR.setfillintstyle(GR::INTSTYLE_HOLLOW)
-        #     GR.fillarea([0, ρ[i] * Math.cos(θ[i]), ρ[i] * Math.cos(θ[i + 1])],
-        #                 [0, ρ[i] * Math.sin(θ[i]), ρ[i] * Math.sin(θ[i + 1])])
-        #   end
+        when :polarhist
+          ymax = kvs[:window][3].to_f
+          ρ = y.map { |i| i / ymax }
+          θ = x.map { |i| i * 180 / Math::PI }
+          (1...ρ.length).each do |i|
+            GR.setfillcolorind(989)
+            GR.setfillintstyle(GR::INTSTYLE_SOLID)
+            GR.fillarc(-ρ[i], ρ[i], -ρ[i], ρ[i], θ[i - 1], θ[i])
+            GR.setfillcolorind(1)
+            GR.setfillintstyle(GR::INTSTYLE_HOLLOW)
+            GR.fillarc(-ρ[i], ρ[i], -ρ[i], ρ[i], θ[i - 1], θ[i])
+          end
 
         when :polarheatmap
           w, h = z.shape
@@ -694,11 +700,18 @@ module GR
             a, b = z.shape
             x = (1..b).to_a
             y = (1..a).to_a
-            zmin, zmax = kvs[:zlim] || z.minmax
+            zmin, zmax = z.minmax
           elsif equal_length(x, y, z)
             x, y, z = GR.gridit(x, y, z, 200, 200)
-            zmin, zmax = kvs[:zlim] || z.compact.minmax # compact : removed nil
+            zmin, zmax = z.compact.minmax # compact : removed nil
           end
+
+          # kvs[:zlim] is supposed to be Array or Range
+          if kvs.has_key?(:zlim)
+            zmin = kvs[:zlim].first if kvs[:zlim].first
+            zmax = kvs[:zlim].last if kvs[:zlim].last
+          end
+
           GR.setspace(zmin, zmax, 0, 90)
           levels = kvs[:levels] || 0
           clabels = kvs[:clabels] || false
@@ -790,7 +803,9 @@ module GR
           colorbar(0.05)
 
         when :plot3
-          GR.polyline3d(x, y, z)
+          mask = GR.uselinespec(spec)
+          GR.polyline3d(x, y, z) if hasline(mask)
+          GR.polymarker3d(x, y, z) if hasmarker(mask)
           draw_axes(kind, 2)
 
         when :scatter3
@@ -819,7 +834,7 @@ module GR
           plot_polar(x, y)
 
         when :trisurf
-          GR._trisurface_(x, y, z)
+          GR.trisurface(x, y, z)
           draw_axes(kind, 2)
           colorbar(0.05)
 
@@ -858,9 +873,9 @@ module GR
         GR.restorestate
       end
 
-      draw_legend if %i[line step scatter stem].include?(kind) && kvs.key?(:labels)
+      draw_legend if %i[line step scatter stem].include?(kind) && kvs.has_key?(:labels)
 
-      if kvs.key?(:update)
+      if kvs[:update]
         GR.updatews
         # if GR.isinline()
         #  restore_context()
@@ -980,24 +995,31 @@ module GR
       [*0..(num - 1)].collect { |i| low + i.to_f * (high - low) / (num - 1) }
     end
 
-    def plot_args(args, _fmt = :xys)
+    def plot_args(args)
       # FIXME
       args = [args] unless args.all? do |i|
                              i.is_a?(Array) && (i[0].is_a?(Array) || narray?(i[0]))
                            end
       args.map do |xyzc|
+        spec = nil
+        case xyzc.last
+        when String
+          spec = xyzc.pop
+        when Hash
+          spec = xyzc.pop[:spec]
+        end
+
         x, y, z, c = xyzc.map do |i|
-          if i.is_a?(Array) || narray?(i)
+          if i.is_a?(Array) || narray?(i) || i.nil?
             i
           elsif i.respond_to?(:to_a)
             # Convert an Array-like class such as Daru::Vector to an Array
             i.to_a
-          else
-            # String
+          else # String
             i
           end
         end
-        [x, y, z, c]
+        [x, y, z, c, spec]
       end
     end
 
@@ -1040,11 +1062,12 @@ module GR
     def minmax
       xmin = ymin = zmin = cmin = Float::INFINITY
       xmax = ymax = zmax = cmax = -Float::INFINITY
-      x_step = nil
-      y_step = nil
-
+      scale = kvs[:scale]
       args.each do |x, y, z, c|
         if x
+          if scale & GR::OPTION_X_LOG != 0
+            x.map! { |v| v > 0 ? v : Float::NAN }
+          end
           x0, x1 = x.minmax
           xmin = [x0, xmin].min
           xmax = [x1, xmax].max
@@ -1053,6 +1076,9 @@ module GR
           xmax = 1
         end
         if y
+          if scale & GR::OPTION_Y_LOG != 0
+            y.map! { |v| v > 0 ? v : Float::NAN }
+          end
           y0, y1 = y.minmax
           ymin = [y0, ymin].min
           ymax = [y1, ymax].max
@@ -1061,6 +1087,9 @@ module GR
           ymax = 1
         end
         if z
+          if scale & GR::OPTION_Z_LOG != 0
+            z.map! { |v| v > 0 ? v : Float::NAN }
+          end
           z0, z1 = z.minmax
           zmin = [z0, zmin].min
           zmax = [z1, zmax].max
@@ -1122,31 +1151,13 @@ module GR
       xmin, xmax = fix_minmax(xmin, xmax)
       ymin, ymax = fix_minmax(ymin, ymax)
       zmin, zmax = fix_minmax(zmin, zmax)
-      if kvs.key?(:xlim)
-        x0, x1 = kvs[:xlim]
-        x0 ||= xmin
-        x1 ||= xmax
-        kvs[:xrange] = [x0, x1]
-      else
-        kvs[:xrange] = [xmin, xmax]
-      end
-      if kvs.key?(:ylim)
-        y0, y1 = kvs[:ylim]
-        y0 ||= ymin
-        y1 ||= ymax
-        kvs[:yrange] = [y0, y1]
-      else
-        kvs[:yrange] = [ymin, ymax]
-      end
-      if kvs.key?(:zlim)
-        z0, z1 = kvs[:zlim]
-        z0 ||= zmin
-        z1 ||= zmax
-        kvs[:zrange] = [z0, z1]
-      else
-        kvs[:zrange] = [zmin, zmax]
-      end
-      if kvs.key?(:clim)
+
+      # kvs[:xlim], kvs[:ylim], kvs[:zlim] is supposed to be Array or Range
+      kvs[:xrange] = [(kvs[:xlim]&.first || xmin), (kvs[:xlim]&.last || xmax)]
+      kvs[:yrange] = [(kvs[:ylim]&.first || ymin), (kvs[:ylim]&.last || ymax)]
+      kvs[:zrange] = [(kvs[:zlim]&.first || zmin), (kvs[:zlim]&.last || zmax)]
+
+      if kvs.has_key?(:clim)
         c0, c1 = kvs[:clim]
         c0 ||= cmin
         c1 ||= cmax
@@ -1165,7 +1176,7 @@ module GR
       kvs[:labels].each do |label|
         label = label.to_s
         tbx, tby = inqtext(0, 0, label)
-        w = [w, tbx[2]].max
+        w = [w, tbx[2] - tbx[0]].max
         h += [tby[2] - tby[0], 0.03].max
       end
       GR.setscale(scale)
@@ -1191,39 +1202,41 @@ module GR
   end
 
   class << self
-    # Draw one or more line plots.
+    # (Plot) Draw one or more line plots.
     def plot(*args)
       create_plot(:line, *args)
     end
 
-    # Draw one or more step or staircase plots.
+    # (Plot) Draw one or more step or staircase plots.
     def step(*args)
       create_plot(:step, *args)
     end
 
-    # Draw one or more scatter plots.
+    # (Plot) Draw one or more scatter plots.
     def scatter(*args)
       create_plot(:scatter, *args)
     end
 
-    # Draw a stem plot.
+    # (Plot) Draw a stem plot.
     def stem(*args)
       create_plot(:stem, *args)
     end
 
-    # def polarhistogram(x, kv = {})
-    #   plt = GR::Plot.new(x, kv)
-    #   plt.kvs[:kind] = :polarhist
-    #   nbins = plt.kvs[:nbins] || 0
-    #   x, y = hist(x, nbins)
-    #   plt.args = [[x, y, nil, nil, '']]
-    #   plt.plot_data
-    # end
+    # (Plot)
+    def polarhistogram(x, kv = {})
+      plt = GR::Plot.new(x, kv)
+      plt.kvs[:kind] = :polarhist
+      nbins = plt.kvs[:nbins] || 0
+      x, y = hist(x, nbins)
+      plt.args = [[x, y, nil, nil, '']]
+      plt.plot_data
+    end
 
-    # Draw a heatmap.
+    # (Plot) Draw a heatmap.
     def heatmap(*args)
       # FIXME
-      _x, _y, z, kv = parse_args(*args)
+      args, kv = format_xyzc(*args)
+      _x, _y, z = args
       ysize, xsize = z.shape
       z = z.reshape(xsize, ysize)
       create_plot(:heatmap, kv) do |plt|
@@ -1233,6 +1246,7 @@ module GR
       end
     end
 
+    # (Plot) Draw a polarheatmap.
     def polarheatmap(*args)
       d = args.shift
       # FIXME
@@ -1248,70 +1262,66 @@ module GR
     end
 
     alias _contour_ contour
-    # Draw a contour plot.
+    # (Plot) Draw a contour plot.
     def contour(*args)
-      x, y, z, kv = parse_args(*args)
-      create_plot(:contour, x, y, z, kv)
+      create_plot(:contour, *format_xyzc(*args))
     end
 
     alias _contourf_ contourf
-    # Draw a filled contour plot.
+    # (Plot) Draw a filled contour plot.
     def contourf(*args)
-      x, y, z, kv = parse_args(*args)
-      create_plot(:contourf, x, y, z, kv)
+      create_plot(:contourf, *format_xyzc(*args))
     end
 
     alias _hexbin_ hexbin
-    # Draw a hexagon binning plot.
+    # (Plot) Draw a hexagon binning plot.
     def hexbin(*args)
       create_plot(:hexbin, *args)
     end
 
-    # Draw a triangular contour plot.
+    # (Plot) Draw a triangular contour plot.
     def tricont(*args)
-      x, y, z, kv = parse_args(*args)
-      create_plot(:tricont, x, y, z, kv)
+      create_plot(:tricont, *format_xyzc(*args))
     end
 
-    # Draw a three-dimensional wireframe plot.
+    # (Plot) Draw a three-dimensional wireframe plot.
     def wireframe(*args)
-      x, y, z, kv = parse_args(*args)
-      create_plot(:wireframe, x, y, z, kv)
+      create_plot(:wireframe, *format_xyzc(*args))
     end
 
-    # Draw a three-dimensional surface plot.
+    # (Plot) Draw a three-dimensional surface plot.
     alias _surface_ surface
     def surface(*args)
-      x, y, z, kv = parse_args(*args)
-      create_plot(:surface, x, y, z, kv)
+      create_plot(:surface, *format_xyzc(*args))
     end
 
+    # (Plot)
     def polar(*args)
       create_plot(:polar, *args)
     end
 
-    alias _trisurface_ trisurface
-    # Draw a triangular surface plot.
-    def trisurface(*args)
-      x, y, z, kv = parse_args(*args)
-      create_plot(:trisurf, x, y, z, kv)
+    # (Plot) Draw a triangular surface plot.
+    def trisurf(*args)
+      create_plot(:trisurf, *format_xyzc(*args))
     end
 
-    # Draw one or more three-dimensional line plots.
+    # (Plot) Draw one or more three-dimensional line plots.
     def plot3(*args)
       create_plot(:plot3, *args)
     end
 
-    # Draw one or more three-dimensional scatter plots.
+    # (Plot) Draw one or more three-dimensional scatter plots.
     def scatter3(*args)
       create_plot(:scatter3, *args)
     end
 
     alias _shade_ shade
+    # (Plot)
     def shade(*args)
       create_plot(:shade, *args)
     end
 
+    # (Plot)
     def volume(v, kv = {})
       create_plot(:volume, v, kv) do |plt|
         plt.args = [[nil, nil, v, nil, '']]
@@ -1325,7 +1335,7 @@ module GR
       end
     end
 
-    # Draw a bar plot.
+    # (Plot) Draw a bar plot.
     def barplot(labels, heights, kv = {})
       labels = labels.map(&:to_s)
       wc, hc = barcoordinates(heights)
@@ -1343,7 +1353,7 @@ module GR
       end
     end
 
-    # Draw a histogram.
+    # (Plot) Draw a histogram.
     def histogram(x, kv = {})
       create_plot(:hist, x, kv) do |plt|
         nbins = plt.kvs[:nbins] || 0
@@ -1352,7 +1362,7 @@ module GR
       end
     end
 
-    # Draw an image.
+    # (Plot) Draw an image.
     def imshow(img, kv = {})
       img = Numo::DFloat.cast(img) # Umm...
       create_plot(:imshow, img, kv) do |plt|
@@ -1360,7 +1370,7 @@ module GR
       end
     end
 
-    # Draw an isosurface.
+    # (Plot) Draw an isosurface.
     def isosurface(v, kv = {})
       v = Numo::DFloat.cast(v) # Umm...
       create_plot(:isosurface, v, kv) do |plt|
@@ -1368,48 +1378,79 @@ module GR
       end
     end
 
-    def savefig(filename)
+    def hold(flag = true)
+      plt = GR::Plot.last_plot
+      plt.kvs.slice(:window, :scale, :xaxis, :yaxis, :zaxis).merge({ ax: flag, clear: !flag })
+    end
+
+    # Set current subplot index.
+    def subplot(nr, nc, p)
+      xmin = 1
+      xmax = 0
+      ymin = 1
+      ymax = 0
+      p = [p] if p.is_a? Integer
+      p.each do |i|
+        r = (nr - (i - 1) / nc).to_f
+        c = ((i - 1) % nc + 1).to_f
+        xmin = [xmin, (c - 1) / nc].min
+        xmax = [xmax, c / nc].max
+        ymin = [ymin, (r - 1) / nr].min
+        ymax = [ymax, r / nr].max
+      end
+      {
+        subplot: [xmin, xmax, ymin, ymax],
+        clear: p[0] == 1,
+        update: p[-1] == nr * nc
+      }
+    end
+
+    # (Plot) Save the current figure to a file.
+    def savefig(filename, kv = {})
       GR.beginprint(filename)
-      GR::Plot.last_plot.plot_data(false)
+      plt = GR::Plot.last_plot
+      plt.kvs.merge!(kv)
+      plt.plot_data(false)
       GR.endprint
     end
 
     private
 
-    def create_plot(type, *args, &block)
+    def create_plot(type, *args)
       plt = GR::Plot.new(*args)
       plt.kvs[:kind] = type
-      block.call(plt) if block_given?
+      yield(plt) if block_given?
       plt.plot_data
       plt
     end
 
-    def parse_args(*args)
+    def format_xyzc(*args)
       kv = if args[-1].is_a? Hash
              args.pop
            else
              {}
            end
-      if args.size == 1
-        if args[0].is_a? Array
-          z = Numo::DFloat.cast(args[0])
-        elsif narray?(args[0])
-          z = args[0]
-        end
-        xsize, ysize = z.shape
-        # NOTE:
-        # See
-        # https://github.com/jheinen/GR.jl/pull/246
-        # https://github.com/jheinen/GR.jl/issues/241
-        x = (1..ysize).to_a * xsize
-        y = (1..xsize).map { |i| Array.new(ysize, i) }.flatten
 
-      elsif args.size == 3
-        x, y, z = args
-      else
-        raise
+      args = [args] unless args.all? do |i|
+                             i.is_a?(Array) && (i[0].is_a?(Array) || narray?(i[0]))
+                           end
+      args.map! do |xyzc|
+        if xyzc.size == 1
+          if xyzc[0].is_a? Array
+            z = Numo::DFloat.cast(xyzc[0])
+          elsif narray?(xyzc[0])
+            z = xyzc[0]
+          end
+          xsize, ysize = z.shape
+          x = (1..ysize).to_a * xsize
+          y = (1..xsize).map { |i| Array.new(ysize, i) }.flatten
+          [x, y, z]
+        else
+
+          xyzc
+        end
       end
-      [x, y, z, kv]
+      [*args, kv]
     end
 
     def hist(x, nbins = 0)

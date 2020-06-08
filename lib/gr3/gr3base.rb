@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 module GR3
-  # This module automatically converts Ruby arrays and Numo::Narray into pointers.
+  # This module automatically converts Ruby arrays and Numo::Narray into
+  # Fiddley::MemoryPointer.
   module GR3Base
     extend GRCommons::DefineMethods
     define_ffi_methods(FFI,
@@ -15,6 +16,4 @@ module GR3
                        default_type: :double)
   end
   private_constant :GR3Base
-
-  extend GRCommons::GRCommonUtils
 end

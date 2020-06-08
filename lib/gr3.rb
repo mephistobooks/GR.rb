@@ -2,43 +2,48 @@
 
 # OverView of GR.rb
 #
-#                            +--------------------+
-#     +-------------------+  | GR3 module         |
-#     | GR module         |  | +----------------+ |
-#     | +---------------+ |  | | GR3::FFI       | |
-#     | | GR::FFI       | |  | | +    libGR3.so | |
-#     | | +   libGR.so  | |  | +----------------+ |
-#     | +---------------+ |  |   | define_method  |
-#     |   | define_method |  | +----------------+ |
-#     | +---------------+ |  | | | GR3::GR3Base | |
-#     | | | GR::GRBase  | |  | | v  (Private)   | |
-#     | | v  (Private)  | |  | +++--------------+ |
-#     | +++-------------+ |  |  | Extend          |
-#     |  | Extend         |  |  v        +------+ |
-#     |  v                |  |           |Check | |
-#     |                   |  |        <--+Error | |
-#     +-------+-----------+  |           +------+ |
-#             ^              +---------+----------+
-#             |  +------------------+  ^
-#      Extend |  | GRCommons module |  | Extend
-#             |  | +--------------+ |  |
-#             |  | |    Fiddley   | |  |
-#             |  | +--------------+ |  |
-#             |  | +--------------+ |  |
-#             +----+ CommonUtils  +----+
-#             |  | +--------------+ |  |
-#             |  | +--------------+ |  |
-#             +----+    Version   +----+
-#             |  | +--------------+ |
-#             |  | +--------------+ |
-#             +----+JupyterSupport| |
-#                | +--------------+ |
-#                +------------------+
+#  +--------------------+  +--------------------+
+#  | GR module          |  | GR3 module         |
+#  | +----------------+ |  | +----------------+ |
+#  | | GR::FFI        | |  | | GR3::FFI       | |
+#  | | +   libGR.so   | |  | | +    libGR3.so | |
+#  | +----------------+ |  | +----------------+ |
+#  |   | define_method  |  |   | define_method  |
+#  | +----------------+ |  | +----------------+ |
+#  | | | GR::GRBase   | |  | | | GR3::GR3Base | |
+#  | | v  (Pri^ate)   | |  | | v  (Pri^ate)   | |
+#  | +++--------------+ |  | +++--------------+ |
+#  |  | Extend          |  |  | Extend          |
+#  |  v                 |  |  v       +-------+ |
+#  |      +-----------+ |  |          | Check | |
+#  |      | GR::Plot  | |  |       <--+ Error | |
+#  |      +-----------+ |  |          +-------+ |
+#  +--------------------+  +----------+---------+
+#            ^                        ^
+#            |  +------------------+  |
+#     Extend |  | GRCommons module |  | Extend
+#            |  | +--------------+ |  |
+#            |  | |    Fiddley   | |  |
+#            |  | +--------------+ |  |
+#            |  | +--------------+ |  |
+#            +----+ CommonUtils  +----+
+#            |  | +--------------+ |  |
+#            |  | +--------------+ |  |
+#            +----+    Version   +----+
+#            |  | +--------------+ |
+#            |  | +--------------+ |
+#            +----+JupyterSupport| |
+#               | +--------------+ |
+#               +------------------+
+#
+# (You can edit the above AA diagram with http://asciiflow.com/)
+#
+# Fiddley is Ruby-FFI compatible API layer for Fiddle.
 #
 # Why not GR::GR3?
 # * kojix2 did not want to force gr3 to be loaded when gr is loaded.
 # * kojix2 did not want to write `GR3 = GR::GR3` or something.
-# * This is a opinion of kojix2 and may be changed in the future.
+# * This is a opinion of kojix2 and may be changed by future maintainers.
 #
 # GR3 uses Numo::Narrray.
 # * It is difficult to write GR3 modules with only Ruby arrays.
@@ -52,37 +57,42 @@ module GR3
   class Error < StandardError; end
 
   class << self
-    attr_reader :ffi_lib
+    attr_accessor :ffi_lib
   end
 
   # Platforms |  path
   # Windows   |  bin/libGR3.dll
   # MacOSX    |  lib/libGR3.so (NOT .dylib)
   # Ubuntu    |  lib/libGR3.so
-  raise Error, 'Please set env variable GRDIR' unless ENV['GRDIR']
-
-  # Set the font path
-  ENV['GKS_FONTPATH'] ||= ENV['GRDIR']
-  # change the default encoding to UTF-8
-  ENV['GKS_ENCODING'] ||= 'utf8'
   if Object.const_defined?(:RubyInstaller)
-    @ffi_lib = File.expand_path('bin/libGR3.dll', ENV['GRDIR'])
-    RubyInstaller::Runtime.add_dll_directory(File.dirname(@ffi_lib))
+    ENV['GRDIR'] ||= [
+      RubyInstaller::Runtime.msys2_installation.msys_path,
+      RubyInstaller::Runtime.msys2_installation.mingwarch,
+    ].join(File::ALT_SEPARATOR)
+    self.ffi_lib = File.expand_path('bin/libGR3.dll', ENV['GRDIR'])
+    RubyInstaller::Runtime.add_dll_directory(File.dirname(ffi_lib))
   else
-    @ffi_lib = File.expand_path('lib/libGR3.so', ENV['GRDIR'])
+    raise Error, 'Please set env variable GRDIR' unless ENV['GRDIR']
+    self.ffi_lib = File.expand_path('lib/libGR3.so', ENV['GRDIR'])
   end
+
+  # change the default encoding to UTF-8.
+  ENV['GKS_ENCODING'] ||= 'utf8'
 
   require_relative 'gr_commons/gr_commons'
   require_relative 'gr3/version'
   require_relative 'gr3/ffi'
   require_relative 'gr3/gr3base'
 
-  # `float` is the default type in GR3
+  # `inquiry` methods etc. are defined here.
+  extend GRCommons::GRCommonUtils
+
+  # `float` is the default type in GR3.
   # A Ruby array or NArray passed to GR3 method is automatically converted to
-  # a FFI::MemoryPointer in the GR3Base class.
+  # a Fiddley::MemoryPointer in the GR3Base class.
   extend GR3Base
 
-  # This module is for adding error checking to all methods in GR3
+  # This module is for adding error checking to all methods in GR3.
   module CheckError
     def geterror
       line = GRCommons::Fiddley::MemoryPointer.new(:int)
@@ -114,8 +124,7 @@ module GR3
   extend CheckError
 
   # Now you can see a lot of methods just calling super here.
-  # Why? Do they really need?
-  # Yes. They are written to help the yard generate the documentation.
+  # They are written to help the yard generate the documentation.
   class << self
     # This method initializes the gr3 context.
     # @return [Integer]

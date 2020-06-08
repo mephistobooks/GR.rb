@@ -10,7 +10,7 @@
   <img src="https://user-images.githubusercontent.com/5798442/70857099-13d57600-1f2c-11ea-8f3c-7d81065f13a5.png">
 </p>
 
-:bar_chart:  [GR framework](https://github.com/sciapp/gr) - the graphics library for visualisation - for Ruby
+:bar_chart:  [GR framework](https://github.com/sciapp/gr) - the graphics library for visualization - for Ruby
 
 ## Installation
 
@@ -50,8 +50,50 @@ GR.plot(x, y)
 ## Examples
 
 Have a look in the [`examples`](https://github.com/red-data-tools/GR.rb/tree/master/examples) directory. 
+* [Example Gallery](https://github.com/red-data-tools/GR.rb/wiki/1.-Example-gallery)
+
+## Features
+
+#### GR::Plot
+
+A simple, matlab-style API.
+
+```ruby
+require 'gr/plot'
+```
+
+`plot` `step` `scatter` `stem` `histogram` `contour` `contourf` `hexbin` `heatmap` `wireframe` `surface` `plot3` `scatter3` `imshow` `isosurface` `polar` `polarhist` `polarheatmap` `trisurf` `tricont` `shade` `volume`
+
+#### GR
+
+```ruby
+require 'gr'
+```
+
+#### GR3
+
+```ruby
+require 'gr3'
+```
+
+## Documentation
+
+- [GR Framework](https://gr-framework.org/)
+- [GR.rb API Documentation](https://rubydoc.info/gems/ruby-gr)
 
 ## GR Installation
+
+### Official binary release
+
+Download the [latest release](https://github.com/sciapp/gr/releases).
+
+Set environment variable GRDIR.
+
+```sh
+export GRDIR="your/path/to/gr"
+```
+
+* macOS Catalina and macOS Mojave: See the "How to open an app that hasn’t been notarized or is from an unidentified developer" section of [Safely open apps on your Mac](https://support.apple.com/en-us/HT202491) in the Apple documentation.
 
 ### Homebrew
 
@@ -62,19 +104,28 @@ brew install libgr
 Set environment variable GRDIR.
 
 ```sh
-export GRDIR="/usr/local/Cellar/libgr/0.44.1"
+export GRDIR=$(brew --prefix libgr)
 ```
 
-### Mac Linux Windows
+If you fail to build libgr using homebrew, Please feel free to [send us your feedback](https://github.com/red-data-tools/GR.rb/issues).
 
-Download the [latest release](https://github.com/sciapp/gr/releases).
+### Red data tools repository
 
-Set environment variable GRDIR.
+Red data tools provides [packages](https://github.com/red-data-tools/packages.red-data-tools.org ) related to our project including `libgr-dev` and `libgr3-dev` for advanced users.
 
-```sh
-export GRDIR="your/path/to/gr"
-```
+## Backend for Charty
+
+GR.rb will be the default backend for [Charty](https://github.com/red-data-tools/charty).
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/red-data-tools/GR.rb.
+* Report bugs
+* Fix bugs and submit pull requests
+* Write, clarify, or fix documentation
+* Suggest or add new features
+* Create visualization library based on GR.rb
+
+## Acknowledgements
+
+We would like to thank Josef Heinen, the creator of [GR.jl](https://github.com/jheinen/GR.jl), Florian Rhiem, the creator of  [python-gr](https://github.com/sciapp/python-gr), and [GR](https://github.com/sciapp/gr) developers.
+

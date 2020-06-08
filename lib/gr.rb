@@ -2,82 +2,93 @@
 
 # OverView of GR.rb
 #
-#                            +--------------------+
-#     +-------------------+  | GR3 module         |
-#     | GR module         |  | +----------------+ |
-#     | +---------------+ |  | | GR3::FFI       | |
-#     | | GR::FFI       | |  | | +    libGR3.so | |
-#     | | +   libGR.so  | |  | +----------------+ |
-#     | +---------------+ |  |   | define_method  |
-#     |   | define_method |  | +----------------+ |
-#     | +---------------+ |  | | | GR3::GR3Base | |
-#     | | | GR::GRBase  | |  | | v  (Private)   | |
-#     | | v  (Private)  | |  | +++--------------+ |
-#     | +++-------------+ |  |  | Extend          |
-#     |  | Extend         |  |  v        +------+ |
-#     |  v                |  |           |Check | |
-#     |                   |  |        <--+Error | |
-#     +-------+-----------+  |           +------+ |
-#             ^              +---------+----------+
-#             |  +------------------+  ^
-#      Extend |  | GRCommons module |  | Extend
-#             |  | +--------------+ |  |
-#             |  | |    Fiddley   | |  |
-#             |  | +--------------+ |  |
-#             |  | +--------------+ |  |
-#             +----+ CommonUtils  +----+
-#             |  | +--------------+ |  |
-#             |  | +--------------+ |  |
-#             +----+    Version   +----+
-#             |  | +--------------+ |
-#             |  | +--------------+ |
-#             +----+JupyterSupport| |
-#                | +--------------+ |
-#                +------------------+
+#  +--------------------+  +--------------------+
+#  | GR module          |  | GR3 module         |
+#  | +----------------+ |  | +----------------+ |
+#  | | GR::FFI        | |  | | GR3::FFI       | |
+#  | | +   libGR.so   | |  | | +    libGR3.so | |
+#  | +----------------+ |  | +----------------+ |
+#  |   | define_method  |  |   | define_method  |
+#  | +----------------+ |  | +----------------+ |
+#  | | | GR::GRBase   | |  | | | GR3::GR3Base | |
+#  | | v  (Pri^ate)   | |  | | v  (Pri^ate)   | |
+#  | +++--------------+ |  | +++--------------+ |
+#  |  | Extend          |  |  | Extend          |
+#  |  v                 |  |  v       +-------+ |
+#  |      +-----------+ |  |          | Check | |
+#  |      | GR::Plot  | |  |       <--+ Error | |
+#  |      +-----------+ |  |          +-------+ |
+#  +--------------------+  +----------+---------+
+#            ^                        ^
+#            |  +------------------+  |
+#     Extend |  | GRCommons module |  | Extend
+#            |  | +--------------+ |  |
+#            |  | |    Fiddley   | |  |
+#            |  | +--------------+ |  |
+#            |  | +--------------+ |  |
+#            +----+ CommonUtils  +----+
+#            |  | +--------------+ |  |
+#            |  | +--------------+ |  |
+#            +----+    Version   +----+
+#            |  | +--------------+ |
+#            |  | +--------------+ |
+#            +----+JupyterSupport| |
+#               | +--------------+ |
+#               +------------------+
+#
+# (You can edit the above AA diagram with http://asciiflow.com/))
+#
+# Fiddley is Ruby-FFI compatible API layer for Fiddle.
 #
 # The GR module works without Numo::Narrray.
-
+# GR3 and GR::Plot depends on numo-narray.
+#
 # This is a procedural interface to the GR plotting library,
 # https://github.com/sciapp/gr
 module GR
   class Error < StandardError; end
 
   class << self
-    attr_reader :ffi_lib
+    attr_accessor :ffi_lib
   end
 
   # Platforms |  path
   # Windows   |  bin/libgr.dll
   # MacOSX    |  lib/libGR.so (NOT .dylib)
   # Ubuntu    |  lib/libGR.so
-  raise Error, 'Please set env variable GRDIR' unless ENV['GRDIR']
-
-  # Set the font path
-  ENV['GKS_FONTPATH'] ||= ENV['GRDIR']
-  # Change the default encoding to UTF-8
-  ENV['GKS_ENCODING'] ||= 'utf8'
   if Object.const_defined?(:RubyInstaller)
-    @ffi_lib = File.expand_path('bin/libgr.dll', ENV['GRDIR'])
-    RubyInstaller::Runtime.add_dll_directory(File.dirname(@ffi_lib))
+    ENV['GRDIR'] ||= [
+      RubyInstaller::Runtime.msys2_installation.msys_path,
+      RubyInstaller::Runtime.msys2_installation.mingwarch,
+    ].join(File::ALT_SEPARATOR)
+    self.ffi_lib = File.expand_path('bin/libgr.dll', ENV['GRDIR'])
+    RubyInstaller::Runtime.add_dll_directory(File.dirname(ffi_lib))
   else
-    @ffi_lib = File.expand_path('lib/libGR.so', ENV['GRDIR'])
+    raise Error, 'Please set env variable GRDIR' unless ENV['GRDIR']
+    self.ffi_lib = File.expand_path('lib/libGR.so', ENV['GRDIR'])
   end
+
+  # Change the default encoding to UTF-8.
+  ENV['GKS_ENCODING'] ||= 'utf8'
 
   require_relative 'gr_commons/gr_commons'
   require_relative 'gr/version'
   require_relative 'gr/ffi'
   require_relative 'gr/grbase'
 
+  # `inquiry` methods etc. are defined here.
+  extend GRCommons::GRCommonUtils
+
+  # Support for Jupyter Notebook / Lab.
   extend GRCommons::JupyterSupport
 
-  # `double` is the default type in GR
+  # `double` is the default type in GR.
   # A Ruby array or NArray passed to GR method is automatically converted to
-  # a FFI::MemoryPointer in the GRBase class.
+  # a Fiddley::MemoryPointer in the GRBase class.
   extend GRBase
 
   # Now you can see a lot of methods just calling super here.
-  # Why? Do they really need?
-  # Yes. They are written to help the yard generate the documentation.
+  # They are written to help the yard generate the documentation.
   class << self
     def initgr(*)
       super
@@ -231,6 +242,9 @@ module GR
     # @param dimx [Integer] X dimension of the color index array
     # @param dimy [Integer] Y dimension of the color index array
     # @param color [Array, NArray] Color index array
+    # The values for `x` and `y` are in world coordinates. `x` must contain
+    # `dimx` + 1 elements and `y` must contain `dimy` + 1 elements. The elements
+    # i and i+1 are respectively the edges of the i-th cell in X and Y direction.
     def nonuniformcellarray(x, y, dimx, dimy, color)
       raise ArgumentError unless x.length == dimx + 1 && y.length == dimy + 1
 
@@ -528,6 +542,13 @@ module GR
     # GR uses the default foreground color (black=1) for the default text color index.
     def settextcolorind(*)
       super
+    end
+
+    # Gets the current text color index.
+    # This function gets the color of text output primitives.
+    # @return [Integer] color The text color index (COLOR < 1256)
+    def inqtextcolorind
+      inquiry_int { |pt| super(pt) }
     end
 
     # Set the current character height.
@@ -1400,12 +1421,14 @@ module GR
 
     # @return [Integer]
     def readimage(path)
+      # Feel free to make a pull request if you catch a mistake
+      # or you have an idea to improve it.
       data = Fiddle::Pointer.malloc(Fiddle::SIZEOF_INTPTR_T)
       w, h = inquiry [:int, :int] do |width, height|
         # data is a pointer of a pointer
         super(path, width, height, data.ref)
       end
-      d = data.to_str(w * h * 4).unpack('L*') # UINT8
+      d = data.to_str(w * h * Fiddle::SIZEOF_INT).unpack('L*') # UInt32
       [w, h, d]
     end
 
@@ -1559,6 +1582,26 @@ module GR
     # @return [Integer]
     def uselinespec(*)
       super
+    end
+
+    def delaunay(x, y)
+      # Feel free to make a pull request if you catch a mistake
+      # or you have an idea to improve it.
+      npoints = equal_length(x, y)
+      triangles = Fiddle::Pointer.malloc(Fiddle::SIZEOF_INTPTR_T)
+      dim = 3
+      n_tri = inquiry_int do |ntri|
+        super(npoints, x, y, ntri, triangles.ref)
+      end
+      if n_tri > 0
+        tri = triangles.to_str(3 * n_tri * Fiddle::SIZEOF_INT).unpack('l*') # Int32
+        # Ruby  : 0-based indexing
+        # Julia : 1-based indexing
+        tri = tri.each_slice(3).to_a
+        [n_tri, tri]
+      else
+        0
+      end
     end
 
     # Reduces the number of points of the x and y array.
@@ -1761,34 +1804,211 @@ module GR
       end
     end
 
-    # Draw paths using given vertices and path codes.
+    # Draw paths using the given vertices and path codes.
     # @param x [Array, NArray] A list containing the X coordinates
     # @param y [Array, NArray] A list containing the Y coordinates
-    # @param codes [String] Path codes
+    # @param codes [String] A list containing the path codes
     #  The following path codes are recognized:
     #  * M, m
-    #    * moveto           x, y
+    #    * moveto                      x, y
     #  * L, l
-    #    * lineto           x, y
+    #    * lineto                      x, y
     #  * Q, q
-    #    * quadratic Bézier x1, y1  x2, y2
+    #    * quadratic Bézier            x1, x2  y1, y2
     #  * C, c
-    #    * cubic Bézier     x1, y1  x2, y2  x3, y3
-    #  * R, r
-    #    * rectangle        w, h
+    #    * cubic Bézier                x1, x2, x3  y1, y2, y3
     #  * A, a
-    #    * arc              w, h  a1, a2
+    #    * arc                         rx, a1, reserved  ry, a2, reserved
     #  * Z
-    #    * closepath        -
+    #    * close path                  -
     #  * s
-    #    * stroke           -
+    #    * stroke                      -
+    #  * s
+    #    * close path and stroke       -
     #  * f
-    #    * fill             -
-    # The values for `x` and `y` are in normalized device coordinates.
-    # The `codes` describe several patch primitives that can be used to create compound paths.
+    #    * close path and fill         -
+    #  * F
+    #    * close path, fill and stroke -
+    # See https://gr-framework.org/python-gr.html#gr.path for more details.
     def path(x, y, codes)
       n = equal_length(x, y)
       super(n, x, y, codes)
+    end
+
+    # Define the border width of subsequent path output primitives.
+    # @param width [Numeric] The border width scale factor
+    def setborderwidth(*)
+      super
+    end
+
+    def inqborderwidth
+      inquiry_double { |pt| super(pt) }
+    end
+
+    # Define the color of subsequent path output primitives.
+    # @param color [Integer] The border color index (COLOR < 1256)
+    def setbordercolorind(*)
+      super
+    end
+
+    def inqbordercolorind
+      inquiry_int { |pt| super(pt) }
+    end
+
+    # Set the projection type with this flag.
+    # @param flag [Integer] projection type
+    #  The available options are:
+    #  * 0 : GR_PROJECTION_DEFAULT
+    #    * default
+    #  * 1 : GR_PROJECTION_ORTHOGRAPHIC
+    #    * orthographic
+    #  * 2 : GR_PROJECTION_PERSPECTIVE
+    #    * perspective
+    def setprojectiontype(*)
+      super
+    end
+
+    # Return the projection type.
+    def inqprojectiontype
+      inquiry_int { |pt| super(pt) }
+    end
+
+    # Method to set the camera position, the upward facing direction and the
+    # focus point of the shown volume.
+    # @param camera_pos_x [Numeric] x component of the cameraposition in world coordinates
+    # @param camera_pos_y [Numeric] y component of the cameraposition in world coordinates
+    # @param camera_pos_z [Numeric] z component of the cameraposition in world coordinates
+    # @param up_x [Numeric] x component of the up vector
+    # @param up_y [Numeric] y component of the up vector
+    # @param up_z [Numeric] z component of the up vector
+    # @param focus_point_x [Numeric] x component of focus-point inside volume
+    # @param focus_point_y [Numeric] y component of focus-point inside volume
+    # @param focus_point_z [Numeric] z component of focus-point inside volume
+    def settransformationparameters(*)
+      super
+    end
+
+    # Return the camera position, up vector and focus point.
+    def inqtransformationparameters
+      inquiry([:double] * 9) do |*pts|
+        super(*pts)
+      end
+    end
+
+    # Set the far and near clipping plane for perspective projection and the
+    # vertical field ov view.
+    # Switches projection type to perspective.
+    # @param near_plane [Numeric] distance to near clipping plane
+    # @param far_plane [Numeric] distance to far clipping plane
+    # @param fov [Numeric] vertical field of view, input must be between 0 and 180 degrees
+    def setperspectiveprojection(*)
+      super
+    end
+
+    # Return the parameters for the perspective projection.
+    def inqperspectiveprojection
+      inquiry %i[double double double] do |*pts|
+        super(*pts)
+      end
+    end
+
+    # Set parameters for orthographic transformation.
+    # Switches projection type to orthographic.
+    # @param left [Numeric] xmin of the volume in worldcoordinates
+    # @param right [Numeric] xmax of volume in worldcoordinates
+    # @param bottom [Numeric] ymin of volume in worldcoordinates
+    # @param top [Numeric] ymax of volume in worldcoordinates
+    # @param near_plane [Numeric] distance to near clipping plane
+    # @param far_plane [Numeric] distance to far clipping plane
+    def setorthographicprojection(*)
+      super
+    end
+
+    # Return the camera position, up vector and focus point.
+    def inqorthographicprojection
+      inquiry([:double] * 6) do |*pts|
+        super(*pts)
+      end
+    end
+
+    # Interface for interaction with the rotation of the model.
+    # For this a virtual Arcball is used.
+    # @param start_mouse_pos_x [Numeric] x component of the start mouse position
+    # @param start_mouse_pos_y [Numeric] y component of the start mouse position
+    # @param end_mouse_pos_x [Numeric] x component of the end mouse position
+    # @param end_mouse_pos_y [Numeric] y component of the end mouse position
+    def camerainteraction(*)
+      super
+    end
+
+    # Set the three dimensional window. Only used for perspective and orthographic projection.
+    # @param xmin [Numeric] min x-value
+    # @param xmax [Numeric] max x-value
+    # @param ymin [Numeric] min y-value
+    # @param ymax [Numeric] max y-value
+    # @param zmin [Numeric] min z-value
+    # @param zmax [Numeric] max z-value
+    def setwindow3d(*)
+      super
+    end
+
+    # Return the three dimensional window.
+    def inqwindow3d
+      inquiry([:double] * 6) do |*pts|
+        super(*pts)
+      end
+    end
+
+    # Set the scale factor for each axis. A one means no scale.
+    # All factor have to be != 0.
+    # @param x_axis_scale [Numeric] factor for scaling the x-axis
+    # @param y_axis_scale [Numeric] factor for scaling the y-axis
+    # @param z_axis_scale [Numeric] factor for scaling the z-axis
+    def setscalefactors3d(*)
+      super
+    end
+
+    # Returns the scale factors for each axis.
+    def inqscalefactors3d
+      inquiry %i[double double double] do |*opts|
+        super(*opts)
+      end
+    end
+
+    # Set the camera for orthographic or perspective projection.
+    # The center of the 3d window is used as the focus point and the camera is
+    # positioned relative to it, using camera distance, rotation and tilt similar
+    # to gr_setspace. This function can be used if the user prefers spherical
+    # coordinates to setting the camera position directly, but has reduced
+    # functionality in comparison to GR.settransformationparameters,
+    # GR.setperspectiveprojection and GR.setorthographicprojection.
+    # @param phi [Numeric] azimuthal angle of the spherical coordinates
+    # @param theta [Numeric] polar angle of the spherical coordinates
+    # @param fov [Numeric] vertical field of view (0 or NaN for orthographic projection)
+    # @param camera_distance [Numeric] distance between the camera and the focus point
+    #   (0 or NaN for the radius of the object's smallest bounding sphere)
+    def setspace3d(*)
+      super
+    end
+
+    def text3d(*)
+      super
+    end
+
+    def inqtext3d(x, y, z, string, axis)
+      inquiry [{ double: 16 }, { double: 16 }] do |tbx, tby|
+        super(x, y, z, string, axis, tbx, tby)
+      end
+    end
+
+    def settextencoding(*)
+      super
+    end
+
+    def inqtextencoding
+      inquiry_int do |encoding|
+        super(encoding)
+      end
     end
   end
 
@@ -2008,6 +2228,9 @@ module GR
   XFORM_CUBIC     = 4
   XFORM_EQUALIZED = 5
 
+  ENCODING_LATIN1 = 300
+  ENCODING_UTF8 = 301
+
   UPSAMPLE_VERTICAL_DEFAULT     = 0x00000000
   UPSAMPLE_HORIZONTAL_DEFAULT   = 0x00000000
   DOWNSAMPLE_VERTICAL_DEFAULT   = 0x00000000
@@ -2024,4 +2247,21 @@ module GR
   UPSAMPLE_HORIZONTAL_LANCZOS   = 0x00000300
   DOWNSAMPLE_VERTICAL_LANCZOS   = 0x00030000
   DOWNSAMPLE_HORIZONTAL_LANCZOS = 0x03000000
+
+  RESAMPLE_DEFAULT =
+    (UPSAMPLE_VERTICAL_DEFAULT | UPSAMPLE_HORIZONTAL_DEFAULT |
+     DOWNSAMPLE_VERTICAL_DEFAULT | DOWNSAMPLE_HORIZONTAL_DEFAULT)
+  RESAMPLE_NEAREST =
+    (UPSAMPLE_VERTICAL_NEAREST | UPSAMPLE_HORIZONTAL_NEAREST |
+     DOWNSAMPLE_VERTICAL_NEAREST | DOWNSAMPLE_HORIZONTAL_NEAREST)
+  RESAMPLE_LINEAR =
+    (UPSAMPLE_VERTICAL_LINEAR | UPSAMPLE_HORIZONTAL_LINEAR |
+     DOWNSAMPLE_VERTICAL_LINEAR | DOWNSAMPLE_HORIZONTAL_LINEAR)
+  RESAMPLE_LANCZOS =
+    (UPSAMPLE_VERTICAL_LANCZOS | UPSAMPLE_HORIZONTAL_LANCZOS |
+     DOWNSAMPLE_VERTICAL_LANCZOS | DOWNSAMPLE_HORIZONTAL_LANCZOS)
+
+  PROJECTION_DEFAULT = 0
+  PROJECTION_ORTHOGRAPHIC = 1
+  PROJECTION_PERSPECTIVE = 2
 end
